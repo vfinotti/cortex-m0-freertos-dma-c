@@ -60,16 +60,50 @@ void vMainHandlerDMA( void *pvParameters );
 SemaphoreHandle_t xBinarySemaphore;
 /*-----------------------------------------------------------*/
 
+
 int main( void )
 {
     /* Prepare the hardware with the initial configuration. */
     /* prvSetupHardware(); */
 
+    /* Don't generate interrupts until the scheduler has been started.
+       Interrupts will be automatically enabled when the first task starts
+       running. */
+	taskDISABLE_INTERRUPTS();
 
+	/* Set the timer interrupts to be above the kernel.  The interrupts are
+       assigned different priorities so they nest with each other. */
+	NVIC_SetPriority( 1, 1 );
 
+	/* Enable the interrupts. */
+	NVIC_EnableIRQ( 1 );
 
-    /* Start the tasks and timer running. */
-    vTaskStartScheduler();
+    /* Before a semaphore is used it must be explicitly created. In this example
+       a binary semaphore is created. */
+    xBinarySemaphore = xSemaphoreCreateBinary();
+
+    /* Check the semaphore was created successfully. */
+    if( xBinarySemaphore != NULL )
+    {
+        /* Create the 'handler' task, which is the task to which interrupt
+           processing is deferred. This is the task that will be synchronized with
+           the interrupt. The handler task is created with a high priority to ensure
+           it runs immediately after the interrupt exits. In this case a priority of
+           3 is chosen. */
+        xTaskCreate( vMainHandlerDMA,                        /* The function that implements the task. */
+                     "Handr",                                /* The text name assigned to the task - for debug only as it is not used by the kernel. */
+                     1000,                                   /* The size of the stack to allocate to the task. */
+                     NULL,                                   /* The parameter passed to the task - just to check the functionality. */
+                     2,                                      /* The priority assigned to the task. */
+                     NULL );                                 /* The task handle is not required, so NULL is passed. */
+
+        /* Create the task that will periodically generate a software interrupt.
+           This is created with a priority below the handler task to ensure it will
+           get preempted each time the handler task exits the Blocked state. */
+
+        /* Start the scheduler so the created tasks start executing. */
+        vTaskStartScheduler();
+    }
 
 
     /* If all is well, the scheduler will now be running, and the following
