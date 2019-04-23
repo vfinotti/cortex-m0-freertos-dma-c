@@ -39,6 +39,10 @@
 /* FreeRTOS includes. */
 #include "FreeRTOS.h"
 #include "task.h"
+#include "semphr.h"
+
+/* Hardware specific includes. */
+#include "cm0fpga.h"
 
 #define mainLED_TOGGLE_PATTERN 0xf0f0f0f0
 #define mainIS_SIMULATION 1
