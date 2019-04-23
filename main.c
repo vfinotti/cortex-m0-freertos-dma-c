@@ -55,9 +55,9 @@
  */
 static void prvSetupHardware( void );
 
+void vMainHandlerDMA( void *pvParameters );
 
-void vMainToggleLED( void *pvParameters );
-
+SemaphoreHandle_t xBinarySemaphore;
 /*-----------------------------------------------------------*/
 
 int main( void )
@@ -66,13 +66,6 @@ int main( void )
     /* prvSetupHardware(); */
 
 
-    /* Start the two tasks*/
-    xTaskCreate( vMainToggleLED,                         /* The function that implements the task. */
-                 "Blink",                                /* The text name assigned to the task - for debug only as it is not used by the kernel. */
-                 1000,                                   /* The size of the stack to allocate to the task. */
-                 NULL,                                   /* The parameter passed to the task - just to check the functionality. */
-                 1,                                      /* The priority assigned to the task. */
-                 NULL );                                 /* The task handle is not required, so NULL is passed. */
 
 
     /* Start the tasks and timer running. */
@@ -88,7 +81,8 @@ int main( void )
 }
 /*-----------------------------------------------------------*/
 
-void vMainToggleLED( void *pvParameters )
+/*-----------------------------------------------------------*/
+void vMainHandlerDMA( void *pvParameters )
 {
     volatile unsigned long ulTrap;   /* memory access pattern receiver. Volatile to ensure ul is not
                                       * optimized away.
@@ -112,8 +106,55 @@ void vMainToggleLED( void *pvParameters )
     /* As per most tasks, this task is implemented in an infinite loop. */
     for( ;; )
     {
+        // Calculate sine and cosine of pi/3
+        CM0FPGA_CORDIC0->CONTROL_START = 0;
+        CM0FPGA_CORDIC0->X = 1073741824; // 1 in Q1.30 notation
+        CM0FPGA_CORDIC0->Y = 0;
+        CM0FPGA_CORDIC0->Z = 715827883; // angle pi/3, since 2pi = 2^32
+        CM0FPGA_CORDIC0->CONTROL_START = 1;
+
+        // Calculate sine and cosine of pi/4
+        CM0FPGA_CORDIC1->CONTROL_START = 0;
+        CM0FPGA_CORDIC1->X = 1073741824; // 1 in Q1.30 notation
+        CM0FPGA_CORDIC1->Y = 0;
+        CM0FPGA_CORDIC1->Z = 536870912; // angle pi/4, since 2pi = 2^32
+        CM0FPGA_CORDIC1->CONTROL_START = 1;
+
+        // Calculate sine and cosine of pi/6
+        CM0FPGA_CORDIC2->CONTROL_START = 0;
+        CM0FPGA_CORDIC2->X = 1073741824; // 1 in Q1.30 notation
+        CM0FPGA_CORDIC2->Y = 0;
+        CM0FPGA_CORDIC2->Z = 357913941; // angle pi/6, since 2pi = 2^32
+        CM0FPGA_CORDIC2->CONTROL_START = 1;
+
+        // Calculate sine and cosine of pi
+        CM0FPGA_CORDIC3->CONTROL_START = 0;
+        CM0FPGA_CORDIC3->X = 1073741824; // 1 in Q1.30 notation
+        CM0FPGA_CORDIC3->Y = 0;
+        CM0FPGA_CORDIC3->Z = 4294967295; // angle pi, since 2pi = 2^32
+        CM0FPGA_CORDIC3->CONTROL_START = 1;
+
         ulTrap = mainLED_TOGGLE_PATTERN; // memory access pattern (toggle LED)
         ulTrap++;                        // force toggle value to change value
+
+
+        // Enabling and configuring DMA
+        CM0FPGA_DMA->CSR = 0x0;                           // Pause is disabled
+        CM0FPGA_DMA->INT_MSK_A = 0x1;                     // Enable interrupt for channel 0 on inta_o
+        CM0FPGA_DMA->CH0_SZ = (0x0<<16                    // Chunck transfer size (in words - 4 bytes)
+                               | 0x100);                  // Total transfer size (in words - 4 bytes)
+        CM0FPGA_DMA->CH0_A0  = (0x40001000 & 0xfffffffc); // Source Address
+        CM0FPGA_DMA->CH0_A1  = (0x40002000 & 0xfffffffc); // Destination Address
+        /* CM0FPGA_DMA->CH0_AM0 = ();                     // Source address mask register */
+        /* CM0FPGA_DMA->CH0_AM1 = ();                     // Destination address mask register */
+        CM0FPGA_DMA->CH0_DESC = (0x00000000);             // Linked list descriptor pointer
+        CM0FPGA_DMA->CH0_SWPTR = (0x00000000);            // Software pointer
+        CM0FPGA_DMA->CH0_CSR = (1<<18                     // Enable IRQ when Done
+                                | 0<<6                    // don't auto restart when Done
+                                | 0<<5                    // Normal Mode
+                                | 1<<4                    // Increment source address
+                                | 1<<3                    // Increment destination address
+                                | 1);                     // Channel enabled
 
         /* Delay for a period. This time a call to vTaskDelay() is used which places
            the task into the Blocked state until the delay period has expired. The
@@ -121,6 +162,14 @@ void vMainToggleLED( void *pvParameters )
            is used (where the xDelayMs constant is declared) to convert a period in
            milliseconds into an equivalent time in ticks. */
         vTaskDelay( xDelayMs );
+
+        /* Use the semaphore to wait for the event. The semaphore was created
+           before the scheduler was started, so before this task ran for the first
+           time. The task blocks indefinitely, meaning this function call will only
+           return once the semaphore has been successfully obtained - so there is
+           no need to check the value returned by xSemaphoreTake(). */
+        xSemaphoreTake( xBinarySemaphore, portMAX_DELAY );
+
     }
 }
 /*-----------------------------------------------------------*/
