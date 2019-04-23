@@ -79,7 +79,33 @@ int main( void )
        FreeRTOS web site for more details. */
     for( ;; );
 }
+
 /*-----------------------------------------------------------*/
+void Interrupt1_Handler(void)
+{
+    BaseType_t xHigherPriorityTaskWoken;
+    /* The xHigherPriorityTaskWoken parameter must be initialized to pdFALSE as
+       it will get set to pdTRUE inside the interrupt safe API function if a
+       context switch is required. */
+    xHigherPriorityTaskWoken = pdFALSE;
+
+    /* 'Give' the semaphore to unblock the task, passing in the address of
+       xHigherPriorityTaskWoken as the interrupt safe API function's
+       pxHigherPriorityTaskWoken parameter. */
+    xSemaphoreGiveFromISR( xBinarySemaphore, &xHigherPriorityTaskWoken );
+
+    /* Disable DMA Channel to clean interrupt */
+    CM0FPGA_DMA->CH0_CSR ^= (0); // Channel disable
+
+    /* Pass the xHigherPriorityTaskWoken value into portYIELD_FROM_ISR(). If
+       xHigherPriorityTaskWoken was set to pdTRUE inside xSemaphoreGiveFromISR()
+       then calling portYIELD_FROM_ISR() will request a context switch. If
+       xHigherPriorityTaskWoken is still pdFALSE then calling
+       portYIELD_FROM_ISR() will have no effect. Unlike most FreeRTOS ports, the
+       Windows port requires the ISR to return a value - the return statement
+       is inside the Windows version of portYIELD_FROM_ISR(). */
+    portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+}
 
 /*-----------------------------------------------------------*/
 void vMainHandlerDMA( void *pvParameters )
