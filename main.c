@@ -129,7 +129,8 @@ void Interrupt1_Handler(void)
     xSemaphoreGiveFromISR( xBinarySemaphore, &xHigherPriorityTaskWoken );
 
     /* Disable DMA Channel to clean interrupt */
-    CM0FPGA_DMA->CH0_CSR ^= (0); // Channel disable
+    CM0FPGA_DMA->CH0_CSR = (0); // Any R/W access on this register cleans the
+                                // interrupt
 
     /* Pass the xHigherPriorityTaskWoken value into portYIELD_FROM_ISR(). If
        xHigherPriorityTaskWoken was set to pdTRUE inside xSemaphoreGiveFromISR()
